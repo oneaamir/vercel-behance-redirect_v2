@@ -24,7 +24,7 @@ function normalizeDest(raw) {
   }
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   try {
     const { rid = '', dest: rawDest } = req.query || {};
 
@@ -91,6 +91,8 @@ module.exports = async (req, res) => {
     // Remove duplicates and empty strings
     const uniqueTrackers = [...new Set(allTrackers.filter(Boolean))];
     
+    console.log('Found trackers:', uniqueTrackers);
+    
     if (uniqueTrackers.length > 0) {
       // Notify all trackers in parallel (don't wait for all to complete)
       // This runs in background and doesn't block the redirect
@@ -105,18 +107,22 @@ module.exports = async (req, res) => {
               '&dest=' + encodeURIComponent(dest) +
               '&via=vercel';
 
+            console.log('Notifying tracker:', fullTrackerUrl);
+
             // Use AbortController to bound time spent waiting for tracker.
             const ac = new AbortController();
             const timeout = setTimeout(() => ac.abort(), DEFAULT_TRACK_TIMEOUT_MS);
 
             // fire-and-wait short timeout so redirect remains fast.
-            await fetch(fullTrackerUrl, { 
+            const response = await fetch(fullTrackerUrl, { 
               method: 'GET', 
               signal: ac.signal,
               headers: {
                 'User-Agent': 'Vercel-Redirect/1.0'
               }
-            }).catch(() => { /* ignore */ });
+            });
+            
+            console.log('Tracker response:', response.status, response.statusText);
             clearTimeout(timeout);
           } catch (e) {
             // ignore individual tracker failures - do not block redirect
@@ -130,6 +136,8 @@ module.exports = async (req, res) => {
       
       // Start tracking in background immediately
       notifyTrackers();
+    } else {
+      console.log('No trackers configured');
     }
 
     // Issue redirect immediately (HTTP 302) - FASTEST POSSIBLE
@@ -149,6 +157,6 @@ module.exports = async (req, res) => {
       res.end('Server error');
     } catch (e) {}
   }
-};
+}
 
 function escapeHtml(s){ return (s+'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
